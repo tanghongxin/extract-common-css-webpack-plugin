@@ -2,6 +2,7 @@ import _ from 'lodash-es'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import webpack from 'webpack'
 
 interface Options {
   outputDir: string
@@ -9,15 +10,11 @@ interface Options {
 }
 
 export default class ExtractCommonCssWebpackPlugin {
-  options: Options
+  public constructor (private options: Options) {}
   
-  constructor(options: Options) {
-    this.options = options
-  }
+  public apply (compiler: webpack.Compiler) {}
   
-  apply() { }
-  
-  read(file: string): Promise<string> {
+  private read (file: string): Promise<string> {
     return new Promise((resolve, reject) => {
       fs.readFile(file, { encoding: 'utf-8' }, (err, data) => {
         if (err) {
@@ -28,18 +25,18 @@ export default class ExtractCommonCssWebpackPlugin {
     })
   }
 
-  write(p: string, data: string) {
+  private write (p: string, data: string): Promise<void> {
     return new Promise((resolve, reject) => {
       fs.writeFile(p, data, (err) => {
         if (err) {
           return reject(err)
         }
-        return resolve(null)
+        return resolve(void 0)
       })
     })
   }
 
-  strToBlocks(content: string) {
+  private strToBlocks (content: string): string[] {
     const lines = content.split(os.EOL)
 
     const blocks = []
@@ -66,25 +63,28 @@ export default class ExtractCommonCssWebpackPlugin {
     return blocks
   }
 
-  blocksToStr(blocks: string[]) {
+  private blocksToStr (blocks: string[]) {
     return blocks.join('')
   }
 
-  async transfer() {
+  async transfer (): Promise<void> {
     const { files, outputDir } = this.options
     
     const originalStrList = await Promise.all(files.map(this.read))
     const originalBlocksList = originalStrList.map(this.strToBlocks)
 
-    const commonBlocks = _.intersection(originalBlocksList)
+    const commonBlocks = _.intersection(...originalBlocksList)
     const ownBlocksList = originalBlocksList.map(blocks => _.difference(blocks, commonBlocks))
 
-    await Promise.all(files.map(async (file, i) => {
-      const { base } = path.parse(file)
-      await this.write(
-        path.join(outputDir, base),
-        this.blocksToStr(ownBlocksList[i])
-      )
-    }))
+    await Promise.all([
+      this.write(path.join(outputDir, 'common.css'), this.blocksToStr(commonBlocks)),
+      ...files.map(async (file, i) => {
+        const { base } = path.parse(file)
+        await this.write(
+          path.join(outputDir, base),
+          this.blocksToStr(ownBlocksList[i])
+        )
+      })
+    ])
   }
 }
